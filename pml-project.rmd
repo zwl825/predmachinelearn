@@ -1,0 +1,164 @@
+---
+title: "Practicle Machine Learning- Course Project"
+author: "Zhenwei LI"
+date: "2016-5-2"
+output: html_document
+---
+
+
+##Background  
+
+Human Activity Recognition - HAR - has emerged as a key research area in the last years and is gaining increasing attention by the pervasive computing research community, especially for the development of context-aware systems.
+
+This human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict "which" activity was performed at a specific point in time. The approach we propose for the Weight Lifting Exercises dataset is to investigate "how (well)" an activity was performed by the wearer. The "how (well)" investigation has only received little attention so far, even though it potentially provides useful information for a large variety of applications,such as sports training.
+
+In this study, six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+
+1. Exactly according to the specification (Class A)
+2. Throwing the elbows to the front (Class B)
+3. Lifting the dumbbell only halfway (Class C)
+4. Lowering the dumbbell only halfway (Class D) 
+5. Throwing the hips to the front (Class E)  
+
+Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. 
+
+Following are the 4 sensor positions and measurements
+
+<div style="width:200px; height=200px">
+Sensor positions: ![](http://groupware.les.inf.puc-rio.br/static/WLE/on-body-sensing-schema.png)
+</div>
+
+
+##Goal
+Base on the sensor measures, determine the activity is properly performed.
+
+##Original study
+http://groupware.les.inf.puc-rio.br/har  
+
+```{r setlocale, echo=FALSE, results="hide"}
+Sys.setlocale("LC_TIME", "C")
+Sys.setlocale("LC_COLLATE", "C")
+Sys.setlocale("LC_CTYPE", "C")
+Sys.setlocale("LC_MONETARY", "C")
+```
+##Preparing Data
+
+1. Download Data  
+
+download data from the url.  
+
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r, results='hide',cache=TRUE,message=FALSE,warning=FALSE}
+library(utils)
+library(caret)
+library(rpart)
+library(randomForest)
+library(caTools)
+url1<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url2<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+pml.train <- read.table(url(url1),sep=",",header=T, na.strings=c("NA","#DIV/0!", ""))
+pml.test <- read.table(url(url2),sep=",",header=T, na.strings=c("NA","#DIV/0!", ""))
+```
+2. Clean Up Data
+
+delete first 7 columns of data, which are not sensor datas.  
+delete colums with at least 75% of data are NAs.
+
+```{r, results='hide',cache=TRUE}
+str(pml.train$class) # a classification problem
+range(pml.train$X)  # this is the row index 
+unique(pml.train$user_name) # this is the names of the 6 test subjects
+unique(pml.train$new_window) # this is not related to the sensor data
+range(pml.train$num_window) # this is not related to the sensor data
+```
+```{r,cache=TRUE}
+train <- pml.train[, -(1:7)]
+test<-pml.test[,-(1:7)]
+rm(pml.train)
+rm(pml.test)
+
+dim(train)
+dim(test)
+#check the columns for NA data, remove those columns have 75% of rows with NA
+train<-train[,colSums(is.na(train)) < 0.25*(dim(train)[1])]
+
+```
+##Expected Error and Cross validation
+
+1. Split train data to 75% train(trainData) and 25% test(testData)
+
+trainData is the dataset uses for train models.  
+testData is the dataset uses as a test ranking models' accuracy.  
+To reduce test errors, cross validation is used to reduce overfitting.  
+Expected test errors should be close to training errors.  
+
+
+```{r,cache=TRUE}
+#split training data to train(75%) and test data(25%)
+set.seed(10001)
+inTrain <- createDataPartition(train$classe, p=0.75, list=FALSE)
+trainData <- train[inTrain, ]
+testData <- train[-inTrain, ]
+rm(train)
+dim(trainData)
+dim(testData)
+```
+
+2. Build decsion tree model, and test with validation data set for accuracy.  
+
+```{r,cache=TRUE}
+modTree<-rpart(classe ~ ., data=trainData, method="class")
+predictTree <- predict(modTree, testData, type = "class")
+confusionMatrix(testData$classe, predictTree)
+cf1<-confusionMatrix(testData$classe, predictTree)$overall[1:2]
+
+```
+3. Build random forest model, and test validation dataset for accuracy.
+
+```{r,cache=TRUE}
+# cross validation = 5 
+tc <- trainControl(method = "cv", number = 5, preProcOptions="pca",
+                   allowParallel = TRUE)
+
+modRf <- train(classe ~ ., data = trainData, method = "rf", trControl= tc)
+predictRf <- predict(modRf, testData, type = "raw")
+confusionMatrix(testData$classe, predictRf)
+cf2<-confusionMatrix(testData$classe, predictRf)$overall[1:2]
+
+```
+
+4. Build LogitBoost model, and test validation dataset for accuracy
+
+```{r,cache=TRUE}
+# cross validation = 5 
+modLogit <- train(classe ~ ., data = trainData, method = "LogitBoost", trControl= tc)
+predictLogit <- predict(modLogit, testData, type = "raw")
+confusionMatrix(testData$classe, predictLogit)
+cf3<-confusionMatrix(testData$classe, predictLogit)$overall[1:2]
+
+```
+##Conclusion for Choosing Model  
+
+
+```{r,cache=TRUE}
+
+model.accuracy<-data.frame(cbind(cf1,cf2,cf3))
+names(model.accuracy)<-c("rpart","RandomForest","LogitBoost")
+model.accuracy
+
+```
+We choose he Random Forest Model which has the best accuracy.  
+
+
+##Predict Test cases
+```{r}
+predictTest20 <- predict(modRf, test, type="raw")
+predictTest20
+
+```
+
+
+
